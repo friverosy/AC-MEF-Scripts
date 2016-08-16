@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 MONGO_DATABASE="AccessControl"
@@ -19,3 +20,11 @@ mkdir -p $BACKUPS_DIR
 mv dump $BACKUP_NAME
 tar -zcvf $BACKUPS_DIR/$BACKUP_NAME.tgz $BACKUP_NAME
 rm -rf $BACKUP_NAME
+
+#Message to Slack
+if [ -f "$BACKUPS_DIR/$BACKUP_NAME.tgz" ]
+then
+    curl -X POST --data-urlencode 'payload={"channel": "#multiexportfoods", "username": "Multi-Boot", "text": "Automatic backup has completed successfully!", "icon_emoji": ":robot_face:"}' https://hooks.slack.com/services/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
+else
+    curl -X POST --data-urlencode 'payload={"channel": "#multiexportfoods", "username": "Multi-Boot", "text": "Automatic backup has *NOT completed*! :warning:", "icon_emoji": ":robot_face:"}' https://hooks.slack.com/services/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
+fi
