@@ -89,6 +89,13 @@ def add_company(db, name, rut):
     db.company.update({"name": name},{"name" : name, "_id": rut}, upsert=True)
 
 
+def add_person(db, run, fullname, card, company_code, company, place, profile, is_permitted):
+    if card == None:
+        db.people.insert({"run": run,"fullname": fullname,"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+    else:
+        db.people.insert({"run": run,"fullname": fullname,"card": card,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+
+
 def get_place(db):
     return db.place.find_one()
 
@@ -96,22 +103,38 @@ def get_place(db):
 def parseXml(file, profile):
     try:
         db = get_db()
-        tree = ET.parse(file)
+        parser = ET.XMLParser(encoding="utf-8")
+        tree = ET.parse(file, parser=parser)
         root = tree.getroot()
-        for employee in root.findall('EMPLEADO'):
-            run = employee[0].text
-            fullname = employee[1].text
-            card = employee[2].text
-            company_code = employee.find('company_code').text
-            company = employee[4].text
-            place = employee[5].text
-            if profile == "E":
+        result = db.people.delete_many({})
+
+        if profile == "E":
+            for employee in root.findall('EMPLEADO'):
+                run = employee[0].text
+                fullname = employee[1].text
+                card = employee[2].text
+                company_code = employee.find('company_code').text
+                company = employee[4].text
+                place = employee[5].text
                 add_place(db, place, company_code)
                 add_company(db,company, company_code)
+                add_person(db, run, fullname, card, company_code, company, place, profile="E", is_permitted=True)
+        else:
+            for employee in root.findall('SUBCONTRATISTA'):
+                run = employee[0].text
+                fullname = employee[1].text
+                card = employee[2].text
+                company_code = employee.find('company_code').text
+                company = employee[4].text
+                place = employee[5].text
+                add_person(db, run, fullname, card, company_code, company, place, profile="C", is_permitted=True)
+
     except IOError as io:
         print "Error en readLastFile()"
     except UnboundLocalError as ule:
         print file + " empty"
+    except ET.ParseError as pe:
+        print pe
 
 
 def main():
@@ -122,20 +145,20 @@ def main():
         CO_FILE = min(glob.iglob(DIR + 'SUBCONTRATISTAS*.xml'), key=os.path.getctime)
 
         if areEquals(EM_FILE, LAST_EMPLOYEES):
+            print "Employees are up to date"
+        else:
             # update employees from new xml
             print "Updating employees"
             parseXml(EM_FILE, "E")
             # sendGet(EM_FILE)
-        else:
-            print "Employees are up to date"
 
         if areEquals(CO_FILE, LAST_CONTRACTORS):
+            print "Contractors are up to date"
+        else:
             # update contractors from new xml
-            print "Updating contractors"
+            print "Updating contractors", CO_FILE
             parseXml(CO_FILE, "C")
             # sendGet(CO_FILE)
-        else:
-            print "Contractors are up to date"
 
     except ValueError:
         print "Empty dir"
