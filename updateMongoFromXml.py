@@ -5,6 +5,8 @@ import urllib2
 import glob
 from pymongo import MongoClient
 import xml.etree.ElementTree as ET
+import slackweb
+
 
 DIR = "/Users/cristtopher/Desktop/xmls/"
 LAST_EMPLOYEES = "lastEmployees.txt"
@@ -12,6 +14,7 @@ LAST_CONTRACTORS = "lastContractors.txt"
 SERVER = "http://0.0.0.0"
 PORT = "3000"
 ENDPOINT = SERVER + ":" + PORT +"/api/people/updateDbFromXml?file="
+SLACK = slackweb.Slack(url="https://hooks.slack.com/services/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")
 
 def readLastFile(profile):
     try:
@@ -91,10 +94,10 @@ def add_company(db, name, rut):
 
 def add_person(db, run, fullname, card, company_code, company, place, profile, is_permitted):
     if card == None:
-        db.people.insert({"run": run,"fullname": fullname,"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+        result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
     else:
-        db.people.insert({"run": run,"fullname": fullname,"card": card,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
-
+        result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": card,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
+    print result
 
 def get_place(db):
     return db.place.find_one()
@@ -106,7 +109,6 @@ def parseXml(file, profile):
         parser = ET.XMLParser(encoding="utf-8")
         tree = ET.parse(file, parser=parser)
         root = tree.getroot()
-        result = db.people.delete_many({})
 
         if profile == "E":
             for employee in root.findall('EMPLEADO'):
@@ -119,6 +121,7 @@ def parseXml(file, profile):
                 add_place(db, place, company_code)
                 add_company(db,company, company_code)
                 add_person(db, run, fullname, card, company_code, company, place, profile="E", is_permitted=True)
+            SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             for employee in root.findall('SUBCONTRATISTA'):
                 run = employee[0].text
@@ -128,6 +131,7 @@ def parseXml(file, profile):
                 company = employee[4].text
                 place = employee[5].text
                 add_person(db, run, fullname, card, company_code, company, place, profile="C", is_permitted=True)
+            SLACK.notify(text="Contractors updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
 
     except IOError as io:
         print "Error en readLastFile()"
@@ -135,6 +139,7 @@ def parseXml(file, profile):
         print file + " empty"
     except ET.ParseError as pe:
         print pe
+        SLACK.notify(text="Error parsing XML!" , channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
 
 
 def main():
@@ -144,8 +149,11 @@ def main():
         EM_FILE = min(glob.iglob(DIR + 'EMPLEADOS*.xml'), key=os.path.getctime)
         CO_FILE = min(glob.iglob(DIR + 'SUBCONTRATISTAS*.xml'), key=os.path.getctime)
 
+        db = get_db()
+        result = db.people.delete_many({})
         if areEquals(EM_FILE, LAST_EMPLOYEES):
             print "Employees are up to date"
+            SLACK.notify(text="Employees are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update employees from new xml
             print "Updating employees"
@@ -154,6 +162,7 @@ def main():
 
         if areEquals(CO_FILE, LAST_CONTRACTORS):
             print "Contractors are up to date"
+            SLACK.notify(text="Contractors are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update contractors from new xml
             print "Updating contractors", CO_FILE
