@@ -98,7 +98,7 @@ def add_person(db, run, fullname, card, company_code, company, place, profile, i
     if card == None:
         result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
     else:
-        result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": card,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
+        result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": int(card),"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
     #print result
     # print fullname + " insertada"
 
@@ -173,8 +173,8 @@ def main():
             parseXml(CO_FILE, "C")
             # sendGet(CO_FILE)
 
-    except ValueError:
-        print "Empty dir"
+    except ValueError as ve:
+        print "Empty dir", ve
 
 
 if __name__ == "__main__":
