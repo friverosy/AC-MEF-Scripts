@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Need Python-2.7.6
 import time
 import os
 import urllib2
@@ -33,29 +34,30 @@ def readLastFile(profile):
         return None
 
 
-def saveLastFile(new_file, profile):
+def saveLastFile(text, last_file):
     try:
-        file = open(profile, "a")
-        file.write(new_file + "\n")
+        file = open(last_file, "a")
+        file.write(text + "\n")
+        print "file saved with ", text
     except IOError as io:
         print "Error en saveLastFile()"
-        print profile + " -> " + io.strerror
-        f = file(profile, "w")
+        print last_file + " -> " + io.strerror
+        f = file(last_file, "w")
 
 
-def areEquals(new, profile):
+def areEquals(new, last_file):
     # Get last file used
-    last = readLastFile(DIR + profile)
+    last = readLastFile(last_file)
     # strip() == trim()
     if last != None:
         last = last.strip()
     else:
         # if file not exist, create.
-        saveLastFile(new, DIR + profile)
+        saveLastFile(new, last_file)
         return False
 
-    # Compare employees files
-    print "Comparing " + last + " with " + new
+    # Compare files
+    print "Comparing " + new + " with " + last
     if last == new:
         print "Are equals"
         return True
@@ -97,7 +99,8 @@ def add_person(db, run, fullname, card, company_code, company, place, profile, i
         result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
     else:
         result = db.people.update({'_id':run},{'$set':{"_id": run,"fullname": fullname,"card": card,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted}},upsert = True)
-    print result
+    #print result
+    # print fullname + " insertada"
 
 def get_place(db):
     return db.place.find_one()
@@ -121,7 +124,9 @@ def parseXml(file, profile):
                 add_place(db, place, company_code)
                 add_company(db,company, company_code)
                 add_person(db, run, fullname, card, company_code, company, place, profile="E", is_permitted=True)
-            SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            #SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            print "People updated!"
+            saveLastFile(file, DIR + LAST_EMPLOYEES)
         else:
             for employee in root.findall('SUBCONTRATISTA'):
                 run = employee[0].text
@@ -131,7 +136,9 @@ def parseXml(file, profile):
                 company = employee[4].text
                 place = employee[5].text
                 add_person(db, run, fullname, card, company_code, company, place, profile="C", is_permitted=True)
-            SLACK.notify(text="Contractors updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            #SLACK.notify(text="Contractors updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            print "People updated!"
+            saveLastFile(file, DIR + LAST_CONTRACTORS)
 
     except IOError as io:
         print "Error en readLastFile()"
@@ -145,27 +152,24 @@ def parseXml(file, profile):
 def main():
     try:
         # Get last file send
-        print "Reading buffer files"
-        EM_FILE = min(glob.iglob(DIR + 'EMPLEADOS*.xml'), key=os.path.getctime)
-        CO_FILE = min(glob.iglob(DIR + 'SUBCONTRATISTAS*.xml'), key=os.path.getctime)
+        EM_FILE = max(glob.iglob(DIR + 'EMPLEADOS*.xml'), key=os.path.getctime)
+        CO_FILE = max(glob.iglob(DIR + 'SUBCONTRATISTAS*.xml'), key=os.path.getctime)
 
         db = get_db()
         result = db.people.delete_many({})
-        if areEquals(EM_FILE, LAST_EMPLOYEES):
+        if areEquals(EM_FILE, DIR + LAST_EMPLOYEES):
             print "Employees are up to date"
-            SLACK.notify(text="Employees are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            # SLACK.notify(text="Employees are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update employees from new xml
-            print "Updating employees"
             parseXml(EM_FILE, "E")
             # sendGet(EM_FILE)
 
         if areEquals(CO_FILE, LAST_CONTRACTORS):
             print "Contractors are up to date"
-            SLACK.notify(text="Contractors are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            # SLACK.notify(text="Contractors are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update contractors from new xml
-            print "Updating contractors", CO_FILE
             parseXml(CO_FILE, "C")
             # sendGet(CO_FILE)
 
