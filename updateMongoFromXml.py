@@ -7,6 +7,7 @@ import glob
 from pymongo import MongoClient
 import xml.etree.ElementTree as ET
 import slackweb
+import requests
 
 
 DIR = "/Users/cristtopher/Desktop/xmls/"
@@ -87,11 +88,11 @@ def get_db():
 
 
 def add_place(db, name, rut):
-    db.place.update({"name": name},{"name" : name, "companyId": rut}, upsert=True)
+    db.place.update({"name": name},{'$set': {"name" : name, "companyId": rut}}, upsert=True)
 
 
 def add_company(db, name, rut):
-    db.company.update({"name": name},{"name" : name, "_id": rut}, upsert=True)
+    db.company.update({"name": name},{'$set': {"name" : name, "_id": rut}}, upsert=True)
 
 
 def add_person(db, run, fullname, card, company_code, company, place, profile, is_permitted):
@@ -148,6 +149,9 @@ def parseXml(file, profile):
         print pe
         SLACK.notify(text="Error parsing XML!" , channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
 
+def sendUpdate():
+    r = requests.post(SERVER + ":" + PORT + "/api/states", data={"updatePeople": True})
+    print(r.status_code, r.reason)
 
 def main():
     try:
@@ -156,7 +160,8 @@ def main():
         CO_FILE = max(glob.iglob(DIR + 'SUBCONTRATISTAS*.xml'), key=os.path.getctime)
 
         db = get_db()
-        result = db.people.delete_many({})
+        db.people.delete_many({})
+        db.place.delete_many({})
         if areEquals(EM_FILE, DIR + LAST_EMPLOYEES):
             print "Employees are up to date"
             # SLACK.notify(text="Employees are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
@@ -164,6 +169,7 @@ def main():
             # update employees from new xml
             parseXml(EM_FILE, "E")
             # sendGet(EM_FILE)
+            sendUpdate()
 
         if areEquals(CO_FILE, LAST_CONTRACTORS):
             print "Contractors are up to date"
@@ -172,6 +178,7 @@ def main():
             # update contractors from new xml
             parseXml(CO_FILE, "C")
             # sendGet(CO_FILE)
+            sendUpdate()
 
     except ValueError as ve:
         print "Empty dir", ve
