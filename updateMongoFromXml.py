@@ -8,6 +8,8 @@ from pymongo import MongoClient
 import xml.etree.ElementTree as ET
 import slackweb
 import requests
+import re
+import string
 
 
 DIR = "/opt/marcasmef/"
@@ -26,12 +28,12 @@ def readLastFile(profile):
             last = line
         return last
     except IOError as io:
-        print "Error en readLastFile()"
+        print "Error en readLastFile()", io
         print profile + " -> " + io.strerror
         f = file(profile, "w")
         return None
     except UnboundLocalError as ule:
-        print profile + " empty"
+        print profile + " empty", ule
         return None
 
 
@@ -41,7 +43,7 @@ def saveLastFile(text, last_file):
         file.write(text + "\n")
         #print "file saved with ", text
     except IOError as io:
-        print "Error en saveLastFile()"
+        print "Error en saveLastFile()", io
         print last_file + " -> " + io.strerror
         f = file(last_file, "w")
 
@@ -83,24 +85,34 @@ def sendGet(profile):
 
 def get_db():
     client = MongoClient('0.0.0.0:27017')
-    db = client.AccessControl20
+    db = client.AccessControl21
     return db
 
 
 def add_place(db, name, rut):
-    db.place.update({"name": name},{'$set': {"name" : name, "companyId": rut}}, upsert=True)
+    try:
+        db.place.update({"name": name},{'$set': {"name" : name, "companyId": rut}}, upsert=True)
+    except:
+        print('Error updating places')
 
 
 def add_company(db, name, rut):
-    db.company.update({"name": name},{"name" : name, "_id": rut}, upsert=True)
+    try:
+        db.company.update({"name": name},{"name" : name, "_id": rut}, upsert=True)
+    except:
+        print('Error updating companies')
 
 
 def add_person(db, run, fullname, card, company_code, company, place, profile, is_permitted):
-    #print run.strip(), fullname.strip(), card, company_code, company, place, profile, is_permitted
-    if card == None:
-        db.people.insert_one({"run":run.strip(),"fullname": fullname.strip(),"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
-    else:
-        db.people.insert_one({"run":run.strip(),"fullname": fullname.strip(),"card": int(card),"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+    try:
+        print run.strip(), fullname.strip(), card, company_code, company, place, profile, is_permitted
+        if card == None:
+            db.people.insert_one({"run":run.strip(),"fullname": fullname.strip(),"card": 0,"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+        else:
+            db.people.insert_one({"run":run.strip(),"fullname": fullname.strip(),"card": int(card),"company_code": company_code,"company": company,"place": place,"profile": profile,"is_permitted": is_permitted})
+    except:
+        print "Error inserting person ", run
+        SLACK.notify(text="Error inserting person to Mongo from XML with rut: "+run, channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
 
 
 def get_place(db):
@@ -110,8 +122,9 @@ def get_place(db):
 def parseXml(file, profile):
     try:
         db = get_db()
-        parser = ET.XMLParser(encoding="utf-8")
+        parser = ET.XMLParser(encoding="iso-8859-5")
         tree = ET.parse(file, parser=parser)
+        
         root = tree.getroot()
 
         if profile == "E":
@@ -125,12 +138,12 @@ def parseXml(file, profile):
                 add_place(db, place, company_code)
                 add_company(db,company, company_code)
                 # Check if already exist.
-                while (db.people.find({"run": { $eq: run }}).count() > 0):
+                while (db.people.find({"run": run, "profile": "V"}).count() > 0):
                     SLACK.notify(text="Person "+run+" already exist!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
-                    db.people.remove({"run": run})
+                    db.people.remove({"run": run, "profile": "V"})
                 add_person(db, run, fullname, card, company_code, company, place, profile="E", is_permitted=True)
-            SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
-            #print "People updated!"
+            #SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            print "Employees updated!"
             saveLastFile(file, DIR + LAST_EMPLOYEES)
         else:
             for employee in root.findall('SUBCONTRATISTA'):
@@ -141,21 +154,23 @@ def parseXml(file, profile):
                 company = employee.find('company').text
                 place = employee[5].text
                 add_person(db, run, fullname, card, company_code, company, place, profile="C", is_permitted=True)
-            SLACK.notify(text="Contractors updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
-            #print "People updated!"
+            #SLACK.notify(text="Contractors updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+            print "Contractors updated!"
             saveLastFile(file, DIR + LAST_CONTRACTORS)
-
     except IOError as io:
-        print "Error en readLastFile()"
+        print "Error en readLastFile()", io
     except UnboundLocalError as ule:
-        print file + " empty"
+        print file + " empty", ule
     except ET.ParseError as pe:
         print pe
-        SLACK.notify(text="Error parsing XML!" , channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+        SLACK.notify(text="Error parsing XML!: "+str(pe), channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
 
 def sendUpdate():
-    r = requests.post(SERVER + ":" + PORT + "/api/states", data={"updatePeople": True})
-    print(r.status_code, r.reason)
+    try:
+        r = requests.post(SERVER + ":" + PORT + "/api/states", data={"updatePeople": True})
+        print(r.status_code, r.reason)
+    except:
+        print('Error updating states')
 
 def main():
     try:
@@ -166,7 +181,6 @@ def main():
         db = get_db()
         if areEquals(EM_FILE, DIR + LAST_EMPLOYEES):
             print "Employees are up to date"
-            # SLACK.notify(text="Employees are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update employees from new xml
             db.place.drop()
@@ -177,7 +191,6 @@ def main():
 
         if areEquals(CO_FILE, DIR + LAST_CONTRACTORS):
             print "Contractors are up to date"
-            # SLACK.notify(text="Contractors are up to date", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
         else:
             # update contractors from new xml
             db.people.delete_many({"profile": "C"})
@@ -191,3 +204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
