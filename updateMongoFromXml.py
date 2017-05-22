@@ -124,10 +124,12 @@ def parseXml(file, profile):
         db = get_db()
         parser = ET.XMLParser(encoding="iso-8859-5")
         tree = ET.parse(file, parser=parser)
-        
+
         root = tree.getroot()
 
         if profile == "E":
+            db.place.drop()
+            db.people.delete_many({"profile": "E"})
             for employee in root.findall('EMPLEADO'):
                 run = employee[0].text
                 fullname = employee[1].text
@@ -140,12 +142,14 @@ def parseXml(file, profile):
                 # Check if already exist.
                 while (db.people.find({"run": run, "profile": "V"}).count() > 0):
                     SLACK.notify(text="Person "+run+" already exist!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
+                    # if this person exist as visit, remove it.
                     db.people.remove({"run": run, "profile": "V"})
                 add_person(db, run, fullname, card, company_code, company, place, profile="E", is_permitted=True)
             #SLACK.notify(text="People updated!", channel="#multiexportfoods", username="Multi-Boot", icon_emoji=":robot_face:")
             print "Employees updated!"
             saveLastFile(file, DIR + LAST_EMPLOYEES)
         else:
+            db.people.delete_many({"profile": "C"})
             for employee in root.findall('SUBCONTRATISTA'):
                 run = employee[0].text
                 fullname = employee[1].text
@@ -183,8 +187,6 @@ def main():
             print "Employees are up to date"
         else:
             # update employees from new xml
-            db.place.drop()
-            db.people.delete_many({"profile": "E"})
             parseXml(EM_FILE, "E")
             # sendGet(EM_FILE)
             sendUpdate()
@@ -193,7 +195,6 @@ def main():
             print "Contractors are up to date"
         else:
             # update contractors from new xml
-            db.people.delete_many({"profile": "C"})
             parseXml(CO_FILE, "C")
             # sendGet(CO_FILE)
             sendUpdate()
@@ -204,4 +205,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
